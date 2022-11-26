@@ -102,6 +102,16 @@ func (adder *Adder) SetMfsRoot(r *mfs.Root) {
 
 // Constructs a node from reader's data, and adds it. Doesn't pin.
 func (adder *Adder) add(reader io.Reader) (ipld.Node, error) {
+
+	// if fi, ok := reader.(files.FileInfo); ok {
+	// 	// fmt.Printf("fi: %#v\n", fi.AbsPath())
+	// 	balanced.FileAbsPath = fi.AbsPath()
+	// 	fmt.Println("FileAbsPath_0:", balanced.FileAbsPath)
+
+	// }
+	fi, _ := reader.(files.FileInfo)
+	fileAbsPath := fi.AbsPath()
+
 	chnk, err := chunker.FromString(reader, adder.Chunker)
 	if err != nil {
 		return nil, err
@@ -123,7 +133,7 @@ func (adder *Adder) add(reader io.Reader) (ipld.Node, error) {
 	if adder.Trickle {
 		nd, err = trickle.Layout(db)
 	} else {
-		nd, err = balanced.Layout(db)
+		nd, err = balanced.Layout(db, fileAbsPath)
 	}
 	if err != nil {
 		return nil, err
@@ -387,6 +397,20 @@ func (adder *Adder) addFile(path string, file files.File) error {
 	// if the progress flag was specified, wrap the file so that we can send
 	// progress updates to the client (over the output channel)
 	var reader io.Reader = file
+
+	// if fi, ok := file.(files.FileInfo); ok {
+	// 	// fmt.Printf("fi: %#v\n", fi.AbsPath())
+	// 	balanced.FileAbsPath = fi.AbsPath()
+	// 	fmt.Println("FileAbsPath:", balanced.FileAbsPath)
+
+	// }
+	// if fi, ok := reader.(files.FileInfo); ok {
+	// 	// fmt.Printf("fi: %#v\n", fi.AbsPath())
+	// 	balanced.FileAbsPath = fi.AbsPath()
+	// 	fmt.Println("FileAbsPath_0:", balanced.FileAbsPath)
+
+	// }
+
 	if adder.Progress {
 		rdr := &progressReader{file: reader, path: path, out: adder.Out}
 		if fi, ok := file.(files.FileInfo); ok {
