@@ -60,7 +60,6 @@ may also specify the level of compression by specifying '-l=<1-9>'.
 		return err
 	},
 	Run: func(req *cmds.Request, res cmds.ResponseEmitter, env cmds.Environment) error {
-		// debug.PrintStack()
 		cmplvl, err := getCompressOptions(req)
 		if err != nil {
 			return err
@@ -72,14 +71,13 @@ may also specify the level of compression by specifying '-l=<1-9>'.
 		}
 
 		p := path.New(req.Arguments[0])
-		file, err := api.Unixfs().Get(req.Context, p)
 
+		file, err := api.Unixfs().Get(req.Context, p)
 		if err != nil {
 			return err
 		}
 
 		size, err := file.Size()
-		fmt.Printf("file.Size():%#v\n", size)
 		if err != nil {
 			return err
 		}
@@ -87,21 +85,15 @@ may also specify the level of compression by specifying '-l=<1-9>'.
 		res.SetLength(uint64(size))
 
 		archive, _ := req.Options[archiveOptionName].(bool)
-
-		/////////////////////////////////////////////////////////////////////////// .ipfs/block 에 저장
 		reader, err := fileArchive(file, p.String(), archive, cmplvl)
-		///////////////////////////////////////////////////////////////////////////
-
 		if err != nil {
 			return err
 		}
-		// fmt.Printf("reader:%+bv\n", reader)
-		// fmt.Printf("Run-fileCidMap:%+v\n", merkledag.FileCidMap)
+
 		return res.Emit(reader)
 	},
 	PostRun: cmds.PostRunMap{
 		cmds.CLI: func(res cmds.Response, re cmds.ResponseEmitter) error {
-			// fmt.Println("here!!!")
 			req := res.Request()
 
 			v, err := res.Next()
@@ -130,9 +122,7 @@ may also specify the level of compression by specifying '-l=<1-9>'.
 				Compression: cmplvl,
 				Size:        int64(res.Length()),
 			}
-			// fmt.Println("here??")
-			// fmt.Printf("outReader:%+v\n", outReader)
-			// fmt.Printf("outPath:%+v\n", outPath)
+
 			return gw.Write(outReader, outPath)
 		},
 	},
@@ -233,8 +223,6 @@ func (gw *getWriter) writeArchive(r io.Reader, fpath string) error {
 
 func (gw *getWriter) writeExtracted(r io.Reader, fpath string) error {
 	fmt.Fprintf(gw.Out, "Saving file(s) to %s\n", fpath)
-	// time.Sleep(5 * time.Second)
-	// fmt.Printf("gw.Err:%+v\n", gw.Err)
 	bar := makeProgressBar(gw.Err, gw.Size)
 	bar.Start()
 	defer bar.Finish()
@@ -275,9 +263,9 @@ func (i *identityWriteCloser) Close() error {
 }
 
 func fileArchive(f files.Node, name string, archive bool, compression int) (io.Reader, error) {
-	//f = type ufsFile struct
 	cleaned := gopath.Clean(name)
-	_, filename := gopath.Split(cleaned) //filename = QmPtxRK2FU1Xo4yA2i4rcHMUYHDhMz39nEqMMLJ8GuigZ2
+	_, filename := gopath.Split(cleaned)
+
 	// need to connect a writer to a reader
 	piper, pipew := io.Pipe()
 	checkErrAndClosePipe := func(err error) bool {
@@ -308,7 +296,6 @@ func fileArchive(f files.Node, name string, archive bool, compression int) (io.R
 	}
 
 	if !archive && compression != gzip.NoCompression {
-
 		// the case when the node is a file
 		r := files.ToFile(f)
 		if r == nil {
@@ -321,14 +308,15 @@ func fileArchive(f files.Node, name string, archive bool, compression int) (io.R
 			}
 			closeGzwAndPipe() // everything seems to be ok
 		}()
-	} else { //here
+	} else {
 		// the case for 1. archive, and 2. not archived and not compressed, in which tar is used anyway as a transport format
+
 		// construct the tar writer
 		w, err := files.NewTarWriter(maybeGzw)
 		if checkErrAndClosePipe(err) {
 			return nil, err
 		}
-		///////////////////////////////////////////////////////////////////////
+
 		go func() {
 			// write all the nodes recursively
 			if err := w.WriteFile(f, filename); checkErrAndClosePipe(err) {
@@ -337,7 +325,6 @@ func fileArchive(f files.Node, name string, archive bool, compression int) (io.R
 			w.Close()         // close tar writer
 			closeGzwAndPipe() // everything seems to be ok
 		}()
-		///////////////////////////////////////////////////////////////////////
 	}
 
 	return piper, nil

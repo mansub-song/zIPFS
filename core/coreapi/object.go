@@ -60,7 +60,6 @@ func (api *ObjectAPI) New(ctx context.Context, opts ...caopts.ObjectNewOption) (
 }
 
 func (api *ObjectAPI) Put(ctx context.Context, src io.Reader, opts ...caopts.ObjectPutOption) (ipath.Resolved, error) {
-	fmt.Println("ObjectAPI Put")
 	options, err := caopts.ObjectPutOptions(opts...)
 	if err != nil {
 		return nil, err

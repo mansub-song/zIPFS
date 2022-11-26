@@ -14,7 +14,6 @@ func main() {
 	wg.Add(2)
 	for _, port := range []string{"5001", "8080"} {
 		go func(port string) {
-			fmt.Println("mssong - 50")
 			defer wg.Done()
 			for {
 				r, err := http.Get(fmt.Sprintf("http://127.0.0.1:%s", port))

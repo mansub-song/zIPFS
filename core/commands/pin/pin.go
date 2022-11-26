@@ -86,17 +86,15 @@ var addPinCmd = &cmds.Command{
 			return err
 		}
 
-		if !showProgress { //showProgress = false
-			st := time.Now()
+		if !showProgress {
 			added, err := pinAddMany(req.Context, api, enc, req.Arguments, recursive)
 			if err != nil {
 				return err
 			}
-			elap := time.Since(st)
-			fmt.Println("pinAddMany elap:", elap)
 
 			return cmds.EmitOnce(res, &AddPinOutput{Pins: added})
 		}
+
 		v := new(dag.ProgressTracker)
 		ctx := v.DeriveContext(req.Context)
 
@@ -107,13 +105,13 @@ var addPinCmd = &cmds.Command{
 
 		ch := make(chan pinResult, 1)
 		go func() {
-			fmt.Println("mssong - 25")
 			added, err := pinAddMany(ctx, api, enc, req.Arguments, recursive)
 			ch <- pinResult{pins: added, err: err}
 		}()
 
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
+
 		for {
 			select {
 			case val := <-ch:
@@ -136,7 +134,6 @@ var addPinCmd = &cmds.Command{
 				return ctx.Err()
 			}
 		}
-
 	},
 	Encoders: cmds.EncoderMap{
 		cmds.Text: cmds.MakeTypedEncoder(func(req *cmds.Request, w io.Writer, out *AddPinOutput) error {
@@ -185,12 +182,9 @@ var addPinCmd = &cmds.Command{
 }
 
 func pinAddMany(ctx context.Context, api coreiface.CoreAPI, enc cidenc.Encoder, paths []string, recursive bool) ([]string, error) {
-	// fmt.Printf("paths:%#v\n", paths) //보통은 1개
-
-	added := make([]string, len(paths)) //보통은 1
+	added := make([]string, len(paths))
 	for i, b := range paths {
 		rp, err := api.ResolvePath(ctx, path.New(b))
-		// fmt.Printf("rp:%#v\n", rp)
 		if err != nil {
 			return nil, err
 		}
@@ -199,7 +193,6 @@ func pinAddMany(ctx context.Context, api coreiface.CoreAPI, enc cidenc.Encoder, 
 			return nil, err
 		}
 		added[i] = enc.Encode(rp.Cid())
-		fmt.Printf("added[i]:%#v\n", added[i])
 	}
 
 	return added, nil
@@ -333,8 +326,6 @@ Example:
 		cmds.BoolOption(pinStreamOptionName, "s", "Enable streaming of pins as they are discovered."),
 	},
 	Run: func(req *cmds.Request, res cmds.ResponseEmitter, env cmds.Environment) error {
-		// fmt.Println("@@@@ls pin!!")
-		fmt.Printf("dag.UnpinnedCidMap:%+v\n", dag.UnpinnedCidMap)
 		api, err := cmdenv.GetApi(env, req)
 		if err != nil {
 			return err
@@ -349,6 +340,7 @@ Example:
 			err = fmt.Errorf("invalid type '%s', must be one of {direct, indirect, recursive, all}", typeStr)
 			return err
 		}
+
 		// For backward compatibility, we accumulate the pins in the same output type as before.
 		emit := res.Emit
 		lgcList := map[string]PinLsType{}
@@ -359,6 +351,7 @@ Example:
 				return nil
 			}
 		}
+
 		if len(req.Arguments) > 0 {
 			err = pinLsKeys(req, typeStr, api, emit)
 		} else {
@@ -367,13 +360,12 @@ Example:
 		if err != nil {
 			return err
 		}
-		fmt.Printf("filecidmap:%+v\n", dag.FileCidMap)
+
 		if !stream {
 			return cmds.EmitOnce(res, &PinLsOutputWrapper{
 				PinLsList: PinLsList{Keys: lgcList},
 			})
 		}
-		fmt.Println("ls pin _ 5") //여기까지 통과 안됨!!
 
 		return nil
 	},
@@ -729,7 +721,6 @@ func pinVerify(ctx context.Context, n *core.IpfsNode, opts pinVerifyOpts, enc ci
 
 	out := make(chan interface{})
 	go func() {
-		fmt.Println("mssong - 26")
 		defer close(out)
 		for _, cid := range recPins {
 			pinStatus := checkPin(cid)

@@ -1,7 +1,6 @@
 package p2p
 
 import (
-	"fmt"
 	"io"
 	"sync"
 
@@ -43,7 +42,6 @@ func (s *Stream) reset() {
 
 func (s *Stream) startStreaming() {
 	go func() {
-		fmt.Println("mssong - 43")
 		_, err := io.Copy(s.Local, s.Remote)
 		if err != nil {
 			s.reset()
@@ -53,7 +51,6 @@ func (s *Stream) startStreaming() {
 	}()
 
 	go func() {
-		fmt.Println("mssong - 44")
 		_, err := io.Copy(s.Remote, s.Local)
 		if err != nil {
 			s.reset()

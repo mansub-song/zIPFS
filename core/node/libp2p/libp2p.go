@@ -45,7 +45,6 @@ func PstoreAddSelfKeys(id peer.ID, sk crypto.PrivKey, ps peerstore.Peerstore) er
 }
 
 func simpleOpt(opt libp2p.Option) func() (opts Libp2pOpts, err error) {
-	fmt.Println("simpleOpt")
 	return func() (opts Libp2pOpts, err error) {
 		opts.Opts = append(opts.Opts, opt)
 		return

@@ -1,4 +1,3 @@
-//go:build testrunmain
 // +build testrunmain
 
 package main
@@ -47,7 +46,6 @@ func main() {
 	sig := make(chan os.Signal, 10)
 	start := make(chan struct{})
 	go func() {
-		fmt.Println("mssong - 33")
 		<-start
 		for {
 			p.Process.Signal(<-sig)

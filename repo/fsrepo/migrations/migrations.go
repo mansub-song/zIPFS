@@ -267,7 +267,6 @@ func fetchMigrations(ctx context.Context, fetcher Fetcher, needed []string, dest
 	for i, name := range needed {
 		logger.Printf("Downloading migration: %s...", name)
 		go func(i int, name string) {
-			fmt.Println("mssong - 46")
 			defer wg.Done()
 			dist := path.Join(distMigsRoot, name)
 			ver, err := LatestDistVersion(ctx, fetcher, dist, false)

@@ -45,7 +45,6 @@ func ForceUnmount(m Mount) error {
 
 	errc := make(chan error, 1)
 	go func() {
-		fmt.Println("mssong - 38")
 		defer close(errc)
 
 		// try vanilla unmount first.

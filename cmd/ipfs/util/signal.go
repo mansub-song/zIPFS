@@ -1,4 +1,3 @@
-//go:build !wasm
 // +build !wasm
 
 package util
@@ -40,7 +39,6 @@ func (ih *IntrHandler) Handle(handler func(count int, ih *IntrHandler), sigs ...
 	signal.Notify(notify, sigs...)
 	ih.wg.Add(1)
 	go func() {
-		fmt.Println("mssong - 12")
 		defer ih.wg.Done()
 		defer signal.Stop(notify)
 
@@ -68,7 +66,6 @@ func SetupInterruptHandler(ctx context.Context) (io.Closer, context.Context) {
 
 			ih.wg.Add(1)
 			go func() {
-				fmt.Println("mssong - 13")
 				defer ih.wg.Done()
 				cancelFunc()
 			}()

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	keystore "github.com/ipfs/go-ipfs-keystore"
+	"github.com/ipfs/go-ipfs-keystore"
 	"github.com/ipfs/go-namesys"
 
 	ipath "github.com/ipfs/go-path"
@@ -108,7 +108,6 @@ func (api *NameAPI) Search(ctx context.Context, name string, opts ...caopts.Name
 
 	out := make(chan coreiface.IpnsResult)
 	go func() {
-		fmt.Println("mssong - 28")
 		defer close(out)
 		for res := range resolver.ResolveAsync(ctx, name, options.ResolveOpts...) {
 			select {

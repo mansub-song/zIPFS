@@ -1,19 +1,19 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strings"
-	"time"
 
-	"github.com/cheggaaa/pb"
 	"github.com/ipfs/go-ipfs/core/commands/cmdenv"
 
+	"github.com/cheggaaa/pb"
 	cmds "github.com/ipfs/go-ipfs-cmds"
 	files "github.com/ipfs/go-ipfs-files"
-
-	// coreiface "github.com/ipfs/interface-go-ipfs-core"
+	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/ipfs/interface-go-ipfs-core/options"
 	mh "github.com/multiformats/go-multihash"
 )
@@ -142,7 +142,6 @@ only-hash, and progress/status related flags) will change the final hash.
 		cmds.IntOption(inlineLimitOptionName, "Maximum block size to inline. (experimental)").WithDefault(32),
 	},
 	PreRun: func(req *cmds.Request, env cmds.Environment) error {
-		fmt.Println("PreRun@@@")
 		quiet, _ := req.Options[quietOptionName].(bool)
 		quieter, _ := req.Options[quieterOptionName].(bool)
 		quiet = quiet || quieter
@@ -162,9 +161,6 @@ only-hash, and progress/status related flags) will change the final hash.
 		return nil
 	},
 	Run: func(req *cmds.Request, res cmds.ResponseEmitter, env cmds.Environment) error {
-		fmt.Println("Run@@@")
-		st := time.Now()
-		// debug.PrintStack()
 		api, err := cmdenv.GetApi(env, req)
 		if err != nil {
 			return err
@@ -191,13 +187,11 @@ only-hash, and progress/status related flags) will change the final hash.
 		}
 
 		enc, err := cmdenv.GetCidEncoder(req)
-		enc = enc
 		if err != nil {
 			return err
 		}
 
 		toadd := req.Files
-		// fmt.Printf("req:%v\n", req) //toadd:&{/ 0xc006a2bdf0 <nil>}
 		if wrap {
 			toadd = files.NewSliceDirectory([]files.DirEntry{
 				files.FileEntry("", req.Files),
@@ -237,61 +231,45 @@ only-hash, and progress/status related flags) will change the final hash.
 
 		var added int
 		addit := toadd.Entries()
-		// fmt.Printf("addit:%v\n", addit) //addit:&{0xc00115f8e0 <nil>  <nil>}
 		for addit.Next() {
-			// fmt.Println("addit.Next()")
-			_, dir := addit.Node().(files.Directory) //addit.Node():&{abspath:/home/mssong/ipfs_data/eval1/random_1M_0 reader:0xc00481d5e0 stat:<nil> fsize:0}
-			dir = dir
-
+			_, dir := addit.Node().(files.Directory)
 			errCh := make(chan error, 1)
 			events := make(chan interface{}, adderOutChanSize)
 			opts[len(opts)-1] = options.Unixfs.Events(events)
 
 			go func() {
-				fmt.Println("mssong - 16")
 				var err error
 				defer close(events)
 				_, err = api.Unixfs().Add(req.Context, addit.Node(), opts...)
 				errCh <- err
 			}()
 
-			// time.Sleep(10 * time.Second)
-			// var err error
-			// // defer close(events)
-			// _, err = api.Unixfs().Add(req.Context, addit.Node(), opts...)
-			// errCh <- err
+			for event := range events {
+				output, ok := event.(*coreiface.AddEvent)
+				if !ok {
+					return errors.New("unknown event type")
+				}
 
-			// for event := range events {
-			// 	// fmt.Printf("addit.Node():%+v\n", addit.Node()) //addit.Node():&{abspath:/home/mssong/ipfs_data/eval1/random_1M_0 reader:0xc00481d5e0 stat:<nil> fsize:0}
-			// 	// fmt.Printf("event:%v\n", event) // dag node 당 하나씩 나옴
-			// 	output, ok := event.(*coreiface.AddEvent)
-			// 	// fmt.Printf("output:%v\n", output)
-			// 	if !ok {
-			// 		return errors.New("unknown event type")
-			// 	}
+				h := ""
+				if output.Path != nil {
+					h = enc.Encode(output.Path.Cid())
+				}
 
-			// 	h := ""
-			// 	// fmt.Printf("output.Path:%+v\n", output.Path) //마지막에 root CID 나옴 output.Path:/ipfs/QmdJqA9tmprwKETmbktbBrVyt3ZESLpN3dyQcPCB3Mfwrx
-			// 	if output.Path != nil {
-			// 		h = enc.Encode(output.Path.Cid())
-			// 	}
+				if !dir && addit.Name() != "" {
+					output.Name = addit.Name()
+				} else {
+					output.Name = path.Join(addit.Name(), output.Name)
+				}
 
-			// 	if !dir && addit.Name() != "" {
-			// 		output.Name = addit.Name()
-			// 	} else {
-			// 		output.Name = path.Join(addit.Name(), output.Name)
-			// 	}
-
-			// 	// fmt.Printf("Name:%+v\nHash:%+v\nBytes:%+v\nSize:%+v\n\n", output.Name, h, output.Bytes, output.Size)
-			// 	if err := res.Emit(&AddEvent{
-			// 		Name:  output.Name,  //항상 file name이 뜸
-			// 		Hash:  h,            //가장 끝에 hash값이 나옴
-			// 		Bytes: output.Bytes, //누적 사이즈
-			// 		Size:  output.Size,  //마지막에 뜸
-			// 	}); err != nil {
-			// 		return err
-			// 	}
-			// }
+				if err := res.Emit(&AddEvent{
+					Name:  output.Name,
+					Hash:  h,
+					Bytes: output.Bytes,
+					Size:  output.Size,
+				}); err != nil {
+					return err
+				}
+			}
 
 			if err := <-errCh; err != nil {
 				return err
@@ -306,31 +284,27 @@ only-hash, and progress/status related flags) will change the final hash.
 		if added == 0 {
 			return fmt.Errorf("expected a file argument")
 		}
-		elap := time.Since(st)
-		fmt.Println("Total process elapsed time:", elap)
+
 		return nil
 	},
 	PostRun: cmds.PostRunMap{
 		cmds.CLI: func(res cmds.Response, re cmds.ResponseEmitter) error {
-			fmt.Println("PostRun@@@")
-			// debug.PrintStack()
 			sizeChan := make(chan int64, 1)
 			outChan := make(chan interface{})
 			req := res.Request()
-			fmt.Printf("res: %+v\n", res)
+
 			// Could be slow.
 			go func() {
-				fmt.Println("mssong - 17")
 				size, err := req.Files.Size()
 				if err != nil {
 					log.Warnf("error getting files size: %s", err)
 					// see comment above
-					fmt.Println("1")
 					return
 				}
 
 				sizeChan <- size
 			}()
+
 			progressBar := func(wait chan struct{}) {
 				defer close(wait)
 
@@ -339,7 +313,7 @@ only-hash, and progress/status related flags) will change the final hash.
 				quiet = quiet || quieter
 
 				progress, _ := req.Options[progressOptionName].(bool)
-				// fmt.Println(progress) //true
+
 				var bar *pb.ProgressBar
 				if progress {
 					bar = pb.New64(0).SetUnits(pb.U_BYTES)
@@ -358,11 +332,6 @@ only-hash, and progress/status related flags) will change the final hash.
 				for {
 					select {
 					case out, ok := <-outChan:
-						// out = out
-						// // fmt.Printf("out: %v\n", out)
-						// if !ok {
-						// 	break LOOP
-						// }
 						if !ok {
 							if quieter {
 								fmt.Fprintln(os.Stdout, lastHash)
@@ -377,7 +346,7 @@ only-hash, and progress/status related flags) will change the final hash.
 								continue
 							}
 
-							if progress { //true
+							if progress {
 								// clear progress bar line before we print "added x" output
 								fmt.Fprintf(os.Stderr, "\033[2K\r")
 							}
@@ -416,7 +385,6 @@ only-hash, and progress/status related flags) will change the final hash.
 						}
 					case <-req.Context.Done():
 						// don't set or print error here, that happens in the goroutine below
-						fmt.Println("2")
 						return
 					}
 				}
@@ -432,7 +400,6 @@ only-hash, and progress/status related flags) will change the final hash.
 
 			if e := res.Error(); e != nil {
 				close(outChan)
-				fmt.Println("3")
 				return e
 			}
 
@@ -440,28 +407,24 @@ only-hash, and progress/status related flags) will change the final hash.
 			go progressBar(wait)
 
 			defer func() { <-wait }()
-			///////////////////////////////////////////////////////////
 			defer close(outChan)
+
 			for {
 				v, err := res.Next()
-				// fmt.Println("res.Next()")
 				if err != nil {
 					if err == io.EOF {
-						fmt.Println("4") //여기!!
 						return nil
 					}
-					fmt.Println("5")
+
 					return err
 				}
+
 				select {
 				case outChan <- v:
-					// fmt.Printf("outchan <- %+v\n", v)
 				case <-req.Context.Done():
-					fmt.Println("6")
 					return req.Context.Err()
 				}
 			}
-			////////////////////////////////////////////////
 		},
 	},
 	Type: AddEvent{},

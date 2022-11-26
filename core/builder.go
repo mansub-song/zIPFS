@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -62,7 +61,6 @@ func NewNode(ctx context.Context, cfg *BuildCfg) (*IpfsNode, error) {
 	n.IsOnline = cfg.Online
 
 	go func() {
-		fmt.Println("mssong - 11")
 		// Shut down the application if the lifetime context is canceled.
 		// NOTE: we _should_ stop the application by calling `Close()`
 		// on the process. But we currently manage everything with contexts.

@@ -12,7 +12,6 @@ import (
 	"runtime/pprof"
 	"time"
 
-	cid "github.com/ipfs/go-cid"
 	util "github.com/ipfs/go-ipfs/cmd/ipfs/util"
 	oldcmds "github.com/ipfs/go-ipfs/commands"
 	core "github.com/ipfs/go-ipfs/core"
@@ -21,7 +20,6 @@ import (
 	loader "github.com/ipfs/go-ipfs/plugin/loader"
 	repo "github.com/ipfs/go-ipfs/repo"
 	fsrepo "github.com/ipfs/go-ipfs/repo/fsrepo"
-	merkledag "github.com/ipfs/go-merkledag"
 
 	cmds "github.com/ipfs/go-ipfs-cmds"
 	"github.com/ipfs/go-ipfs-cmds/cli"
@@ -70,22 +68,6 @@ func loadPlugins(repoPath string) (*loader.PluginLoader, error) {
 // - output the response
 // - if anything fails, print error, maybe with help
 func main() {
-	if merkledag.FileCidMap == nil {
-		merkledag.FileCidMap = make(map[cid.Cid][]cid.Cid)
-		merkledag.FileCid = make([][]cid.Cid, merkledag.RequestLen)
-		for i := 0; i < merkledag.RequestLen; i++ {
-			merkledag.FileCid[i] = make([]cid.Cid, 0)
-		}
-		merkledag.UnpinnedCidMap = make(map[cid.Cid][]cid.Cid)
-		merkledag.GetCmdRootCid = cid.Cid{}
-		merkledag.IsMfsRootVisit = false
-		merkledag.InitCidArr = make([]cid.Cid, 0)
-
-		fmt.Println("@@@@@@@@@@@UnpinnedCidMap init!!!!")
-		fmt.Println("@@@@@@@@@@@FileCidMap init~~~~")
-	} else {
-		fmt.Println("merkledag.FileCidMap != nil")
-	}
 	os.Exit(mainRet())
 }
 
@@ -342,7 +324,6 @@ func startProfiling() (func(), error) {
 		return nil, err
 	}
 	go func() {
-		fmt.Println("mssong - 8")
 		for range time.NewTicker(time.Second * 30).C {
 			err := writeHeapProfileToFile()
 			if err != nil {

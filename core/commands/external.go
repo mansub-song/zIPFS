@@ -59,7 +59,6 @@ func ExternalBinary(instructions string) *cmds.Command {
 			errC := make(chan error)
 
 			go func() {
-				fmt.Println("mssong - 20")
 				var err error
 				defer func() { errC <- err }()
 				err = cmd.Wait()

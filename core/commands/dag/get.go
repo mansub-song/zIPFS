@@ -61,7 +61,6 @@ func dagGet(req *cmds.Request, res cmds.ResponseEmitter, env cmds.Environment) e
 
 	r, w := io.Pipe()
 	go func() {
-		fmt.Println("mssong - 24")
 		defer w.Close()
 		if err := encoder(finalNode, w); err != nil {
 			_ = w.CloseWithError(err)

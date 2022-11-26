@@ -38,7 +38,6 @@ func dagExport(req *cmds.Request, res cmds.ResponseEmitter, env cmds.Environment
 
 	errCh := make(chan error, 2) // we only report the 1st error
 	go func() {
-		fmt.Println("mssong - 23")
 		defer func() {
 			if err := pipeW.Close(); err != nil {
 				errCh <- fmt.Errorf("stream flush failed: %s", err)

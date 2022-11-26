@@ -162,7 +162,7 @@ func CommandsROOption(cctx oldcmds.Context) ServeOption {
 // CheckVersionOption returns a ServeOption that checks whether the client ipfs version matches. Does nothing when the user agent string does not contain `/go-ipfs/`
 func CheckVersionOption() ServeOption {
 	daemonVersion := version.ApiVersion
-	fmt.Println("@@@CheckVersionOption")
+
 	return ServeOption(func(n *core.IpfsNode, l net.Listener, parent *http.ServeMux) (*http.ServeMux, error) {
 		mux := http.NewServeMux()
 		parent.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

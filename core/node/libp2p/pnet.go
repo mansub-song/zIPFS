@@ -45,7 +45,6 @@ func PNetChecker(repo repo.Repo, ph host.Host, lc fx.Lifecycle) error {
 	lc.Append(fx.Hook{
 		OnStart: func(_ context.Context) error {
 			go func() {
-				fmt.Println("mssong - 32")
 				t := time.NewTicker(30 * time.Second)
 				defer t.Stop()
 

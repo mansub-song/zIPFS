@@ -201,7 +201,6 @@ func (pl *peerLogPlugin) Start(node *core.IpfsNode) error {
 	node.PeerHost.Network().Notify(&notifee)
 
 	go func() {
-		fmt.Println("mssong - 45")
 		defer sub.Close()
 		for e := range sub.Out() {
 			switch e := e.(type) {

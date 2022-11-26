@@ -17,6 +17,7 @@ import (
 	files "github.com/ipfs/go-ipfs-files"
 	ipld "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
+	merkledag "github.com/ipfs/go-merkledag"
 	dagtest "github.com/ipfs/go-merkledag/test"
 	mfs "github.com/ipfs/go-mfs"
 	ft "github.com/ipfs/go-unixfs"
@@ -54,7 +55,6 @@ func getOrCreateNilNode() (*core.IpfsNode, error) {
 // Add builds a merkledag node from a reader, adds it to the blockstore,
 // and returns the key representing that node.
 func (api *UnixfsAPI) Add(ctx context.Context, files files.Node, opts ...options.UnixfsAddOption) (path.Resolved, error) {
-	// debug.PrintStack()
 	settings, prefix, err := options.UnixfsAddOptions(opts...)
 	if err != nil {
 		return nil, err
@@ -174,16 +174,14 @@ func (api *UnixfsAPI) Add(ctx context.Context, files files.Node, opts ...options
 			return nil, err
 		}
 	}
+
 	return path.IpfsPath(nd.Cid()), nil
 }
 
 func (api *UnixfsAPI) Get(ctx context.Context, p path.Path) (files.Node, error) {
 	ses := api.core().getSession(ctx)
-	// fmt.Printf("ses:%+v\n\n", ses)
-	// fmt.Printf("ses.nd:%+v\n", ses.nd)
+
 	nd, err := ses.ResolveNode(ctx, p)
-	dag.GetCmdRootCid = nd.Cid()
-	fmt.Printf("nd:%+v\n", nd.Cid())
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +242,7 @@ func (api *UnixfsAPI) processLink(ctx context.Context, linkres ft.LinkResult, se
 			break
 		}
 
-		if pn, ok := linkNode.(*dag.ProtoNode); ok {
+		if pn, ok := linkNode.(*merkledag.ProtoNode); ok {
 			d, err := ft.FSNodeFromBytes(pn.Data())
 			if err != nil {
 				lnk.Err = err
@@ -270,7 +268,6 @@ func (api *UnixfsAPI) lsFromLinksAsync(ctx context.Context, dir uio.Directory, s
 	out := make(chan coreiface.DirEntry)
 
 	go func() {
-		fmt.Println("mssong - 31")
 		defer close(out)
 		for l := range dir.EnumLinksAsync(ctx) {
 			select {

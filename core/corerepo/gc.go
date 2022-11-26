@@ -4,13 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/ipfs/go-ipfs/core"
 	"github.com/ipfs/go-ipfs/gc"
 	"github.com/ipfs/go-ipfs/repo"
-	merkledag "github.com/ipfs/go-merkledag"
 
 	"github.com/dustin/go-humanize"
 	"github.com/ipfs/go-cid"
@@ -78,12 +76,10 @@ func NewGC(n *core.IpfsNode) (*GC, error) {
 
 func BestEffortRoots(filesRoot *mfs.Root) ([]cid.Cid, error) {
 	rootDag, err := filesRoot.GetDirectory().GetNode()
-
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("rootDag:%v\n", rootDag)
-	fmt.Printf("rootDag.Cid():%v\n", rootDag.Cid())
+
 	return []cid.Cid{rootDag.Cid()}, nil
 }
 
@@ -93,15 +89,6 @@ func GarbageCollect(n *core.IpfsNode, ctx context.Context) error {
 		return err
 	}
 	rmed := gc.GC(ctx, n.Blockstore, n.Repo.Datastore(), n.Pinning, roots)
-
-	return CollectResult(ctx, rmed, nil)
-}
-func GarbageCollectOpt(n *core.IpfsNode, ctx context.Context) error {
-	roots, err := BestEffortRoots(n.FilesRoot)
-	if err != nil {
-		return err
-	}
-	rmed := gc.GCOpt(ctx, n.Blockstore, n.Repo.Datastore(), n.Pinning, roots)
 
 	return CollectResult(ctx, rmed, nil)
 }
@@ -161,16 +148,13 @@ func (e *MultiError) Error() string {
 }
 
 func GarbageCollectAsync(n *core.IpfsNode, ctx context.Context) <-chan gc.Result {
-	// fmt.Printf("n.FilesRoot:%v\n", *n.FilesRoot) // 항상 고정인듯?? ipfs add 해도 값이 똑같음
 	roots, err := BestEffortRoots(n.FilesRoot)
-
 	if err != nil {
 		out := make(chan gc.Result)
 		out <- gc.Result{Error: err}
 		close(out)
 		return out
 	}
-	fmt.Printf("roots:%v\n", roots)
 
 	return gc.GC(ctx, n.Blockstore, n.Repo.Datastore(), n.Pinning, roots)
 }
@@ -185,19 +169,11 @@ func PeriodicGC(ctx context.Context, node *core.IpfsNode) error {
 		cfg.Datastore.GCPeriod = "1h"
 	}
 
-	gcPeriod, err := time.ParseDuration(cfg.Datastore.GCPeriod)
+	period, err := time.ParseDuration(cfg.Datastore.GCPeriod)
 	if err != nil {
 		return err
 	}
-	if int64(gcPeriod) == 0 {
-		// if duration is 0, it means GC is disabled.
-		return nil
-	}
-	victimPeriod, err := time.ParseDuration(cfg.Datastore.VictimPeriod)
-	if err != nil {
-		return err
-	}
-	if int64(victimPeriod) == 0 {
+	if int64(period) == 0 {
 		// if duration is 0, it means GC is disabled.
 		return nil
 	}
@@ -207,26 +183,15 @@ func PeriodicGC(ctx context.Context, node *core.IpfsNode) error {
 		return err
 	}
 
-	gcTimerChan := time.Tick(gcPeriod)
-	victimTimerChan := time.Tick(victimPeriod)
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-gcTimerChan:
+		case <-time.After(period):
 			// the private func maybeGC doesn't compute storageMax, storageGC, slackGC so that they are not re-computed for every cycle
 			if err := gc.maybeGC(ctx, 0); err != nil {
 				log.Error(err)
 			}
-			// if err := gc.maybeGC(ctx, 0); err != nil {
-			// 	log.Error(err)
-			// }
-		case <-victimTimerChan:
-
-			merkledag.UnpinnedCidMap = make(map[cid.Cid][]cid.Cid)
-			merkledag.GetCmdRootCid = cid.Cid{}
-			fmt.Println("UnpinnedCidMap clear!")
-			//TODO: 모든 VICTIMSET의 value값을 PENDING -> VICTIM으로 변경
 		}
 	}
 }
@@ -254,32 +219,6 @@ func (gc *GC) maybeGC(ctx context.Context, offset uint64) error {
 		log.Info("Watermark exceeded. Starting repo GC...")
 
 		if err := GarbageCollect(gc.Node, ctx); err != nil {
-			return err
-		}
-		log.Infof("Repo GC done. See `ipfs repo stat` to see how much space got freed.\n")
-	}
-	return nil
-}
-
-func (gc *GC) maybeGCOpt(ctx context.Context, offset uint64) error {
-	storage, err := gc.Repo.GetStorageUsage(ctx)
-	if err != nil {
-		return err
-	}
-
-	// if storage + offset > gc.StorageVictim {
-
-	// }
-
-	if storage+offset > gc.StorageGC {
-		if storage+offset > gc.StorageMax {
-			log.Warnf("pre-GC: %s", ErrMaxStorageExceeded)
-		}
-
-		// Do GC here
-		log.Info("Watermark exceeded. Starting repo GC...")
-
-		if err := GarbageCollectOpt(gc.Node, ctx); err != nil {
 			return err
 		}
 		log.Infof("Repo GC done. See `ipfs repo stat` to see how much space got freed.\n")

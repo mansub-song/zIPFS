@@ -6,26 +6,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
-	cid "github.com/ipfs/go-cid"
 	assets "github.com/ipfs/go-ipfs/assets"
 	oldcmds "github.com/ipfs/go-ipfs/commands"
 	core "github.com/ipfs/go-ipfs/core"
 	"github.com/ipfs/go-ipfs/core/commands"
 	fsrepo "github.com/ipfs/go-ipfs/repo/fsrepo"
-	"github.com/ipfs/go-merkledag"
 	path "github.com/ipfs/go-path"
 	unixfs "github.com/ipfs/go-unixfs"
 
 	cmds "github.com/ipfs/go-ipfs-cmds"
 	config "github.com/ipfs/go-ipfs-config"
 	files "github.com/ipfs/go-ipfs-files"
-
 	options "github.com/ipfs/interface-go-ipfs-core/options"
 )
 
@@ -77,7 +72,6 @@ environment variable:
 	Extra:    commands.CreateCmdExtras(commands.SetDoesNotUseRepo(true), commands.SetDoesNotUseConfigAsInput(true)),
 	PreRun:   commands.DaemonNotRunning,
 	Run: func(req *cmds.Request, res cmds.ResponseEmitter, env cmds.Environment) error {
-
 		cctx := env.(*oldcmds.Context)
 		empty, _ := req.Options[emptyRepoOptionName].(bool)
 		algorithm, _ := req.Options[algorithmOptionName].(string)
@@ -234,51 +228,7 @@ func addDefaultAssets(out io.Writer, repoRoot string) error {
 	}
 
 	_, err = fmt.Fprintf(out, "\n\tipfs cat /ipfs/%s/readme\n\n", dkey)
-	merkledag.InitCidArr = append(merkledag.InitCidArr, dkey)
-	err = saveInitCid()
-	if err != nil {
-		return err
-	}
-
 	return err
-}
-
-func writeCidFile(path string, key cid.Cid) error {
-	cids := make([]cid.Cid, 0)
-	for _, cidV1 := range merkledag.FileCidMap[key] {
-		cids = append(cids, cidV1)
-	}
-	doc, _ := json.Marshal(cids)
-
-	err := ioutil.WriteFile(path, doc, os.FileMode(0644)) // articles.json 파일에 JSON 문서 저장
-	if err != nil {
-		return err
-	}
-	b, err := ioutil.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	data := make([]cid.Cid, 0)
-	json.Unmarshal(b, &data) // JSON 문서의 내용을 변환하여 data에 저장
-	fmt.Println("len:", len(data))
-	for i := 0; i < len(data); i++ {
-		fmt.Println("saveInitCid:", data[i].String())
-	}
-
-	return nil
-}
-
-func saveInitCid() error {
-	homePath, _ := os.UserHomeDir()
-	for i, cid := range merkledag.InitCidArr {
-		path := homePath + "/.ipfs/initCid" + strconv.Itoa(i) + ".json"
-		fmt.Println(cid, path)
-		err := writeCidFile(path, cid)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func initializeIpnsKeyspace(repoRoot string) error {

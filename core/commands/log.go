@@ -116,7 +116,6 @@ Outputs event log messages (not other log messages) as they are generated.
 		ctx := req.Context
 		r, w := io.Pipe()
 		go func() {
-			fmt.Println("mssong - 18")
 			defer w.Close()
 			<-ctx.Done()
 		}()

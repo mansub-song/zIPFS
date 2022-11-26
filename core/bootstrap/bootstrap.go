@@ -11,8 +11,8 @@ import (
 
 	logging "github.com/ipfs/go-log"
 	"github.com/jbenet/goprocess"
-	goprocessctx "github.com/jbenet/goprocess/context"
-	periodicproc "github.com/jbenet/goprocess/periodic"
+	"github.com/jbenet/goprocess/context"
+	"github.com/jbenet/goprocess/periodic"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -166,7 +166,6 @@ func bootstrapConnect(ctx context.Context, ph host.Host, peers []peer.AddrInfo) 
 
 		wg.Add(1)
 		go func(p peer.AddrInfo) {
-			fmt.Println("mssong - 15")
 			defer wg.Done()
 			log.Debugf("%s bootstrapping to %s", ph.ID(), p.ID)
 

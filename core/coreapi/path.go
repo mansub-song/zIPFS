@@ -23,7 +23,7 @@ func (api *CoreAPI) ResolveNode(ctx context.Context, p path.Path) (ipld.Node, er
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("@@@ResolveNode")
+
 	node, err := api.dag.Get(ctx, rp.Cid())
 	if err != nil {
 		return nil, err
@@ -43,7 +43,6 @@ func (api *CoreAPI) ResolvePath(ctx context.Context, p path.Path) (path.Resolved
 
 	ipath := ipfspath.Path(p.String())
 	ipath, err := resolve.ResolveIPNS(ctx, api.namesys, ipath)
-	fmt.Printf("ipath:%+v\n", ipath)
 	if err == resolve.ErrNoNamesys {
 		return nil, coreiface.ErrOffline
 	} else if err != nil {
@@ -63,14 +62,11 @@ func (api *CoreAPI) ResolvePath(ctx context.Context, p path.Path) (path.Resolved
 	resolver := ipfspathresolver.NewBasicResolver(dataFetcher)
 
 	node, rest, err := resolver.ResolveToLastNode(ctx, ipath)
-	fmt.Printf("node:%+v\n", node)
-
 	if err != nil {
 		return nil, err
 	}
 
 	root, err := cid.Parse(ipath.Segments()[1])
-	fmt.Printf("root:%+v\n", root)
 	if err != nil {
 		return nil, err
 	}

@@ -67,18 +67,15 @@ order to reclaim hard disk space.
 		cmds.BoolOption(repoQuietOptionName, "q", "Write minimal output."),
 	},
 	Run: func(req *cmds.Request, re cmds.ResponseEmitter, env cmds.Environment) error {
-		// debug.PrintStack()
-		n, err := cmdenv.GetNode(env) // 현재 local IPFS node를 의미
+		n, err := cmdenv.GetNode(env)
 		if err != nil {
 			return err
 		}
 
 		streamErrors, _ := req.Options[repoStreamErrorsOptionName].(bool)
-		// fmt.Printf("req.Options[repoStreamErrorsOptionName]:%v\n", req.Options[repoStreamErrorsOptionName])
-		// fmt.Printf("*n:%v\n", *n)
 
 		gcOutChan := corerepo.GarbageCollectAsync(n, req.Context)
-		// fmt.Printf("streamErrors:%v\n", streamErrors)
+
 		if streamErrors {
 			errs := false
 			for res := range gcOutChan {
@@ -88,7 +85,6 @@ order to reclaim hard disk space.
 					}
 					errs = true
 				} else {
-					// fmt.Printf("res.KeyRemoved:%v\n", res.KeyRemoved)
 					if err := re.Emit(&GcResult{Key: res.KeyRemoved}); err != nil {
 						return err
 					}
@@ -97,12 +93,11 @@ order to reclaim hard disk space.
 			if errs {
 				return errors.New("encountered errors during gc run")
 			}
-		} else { //here@@
+		} else {
 			err := corerepo.CollectResult(req.Context, gcOutChan, func(k cid.Cid) {
 				// Nothing to do with this error, really. This
 				// most likely means that the client is gone but
 				// we still need to let the GC finish.
-				// fmt.Printf("k:%v\n", k)
 				_ = re.Emit(&GcResult{Key: k})
 			})
 			if err != nil {
@@ -115,19 +110,19 @@ order to reclaim hard disk space.
 	Type: GcResult{},
 	Encoders: cmds.EncoderMap{
 		cmds.Text: cmds.MakeTypedEncoder(func(req *cmds.Request, w io.Writer, gcr *GcResult) error {
-			// debug.PrintStack()
 			quiet, _ := req.Options[repoQuietOptionName].(bool)
 
 			if gcr.Error != "" {
 				_, err := fmt.Fprintf(w, "Error: %s\n", gcr.Error)
 				return err
 			}
+
 			prefix := "removed "
 			if quiet {
 				prefix = ""
 			}
-			_, err := fmt.Fprintf(w, "%s%s\n", prefix, cid.NewCidV0(gcr.Key.Hash()))
-			_, err = fmt.Fprintf(w, "%s%s\n", prefix, gcr.Key)
+
+			_, err := fmt.Fprintf(w, "%s%s\n", prefix, gcr.Key)
 			return err
 		}),
 	},

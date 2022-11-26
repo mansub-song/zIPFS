@@ -641,7 +641,6 @@ func resolveAddresses(ctx context.Context, addrs []string, rslv *madns.Resolver)
 		}
 		wg.Add(1)
 		go func(maddr ma.Multiaddr) {
-			fmt.Println("mssong - 21")
 			defer wg.Done()
 			raddrs, err := rslv.Resolve(ctx, maddr)
 			if err != nil {
@@ -662,7 +661,6 @@ func resolveAddresses(ctx context.Context, addrs []string, rslv *madns.Resolver)
 		}(maddr)
 	}
 	go func() {
-		fmt.Println("mssong - 22")
 		wg.Wait()
 		close(maddrC)
 	}()

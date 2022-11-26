@@ -1,4 +1,3 @@
-//go:build !windows && !openbsd && !netbsd && !plan9 && !nofuse
 // +build !windows,!openbsd,!netbsd,!plan9,!nofuse
 
 package node
@@ -74,7 +73,6 @@ func doMount(node *core.IpfsNode, fsdir, nsdir string) error {
 
 	wg.Add(1)
 	go func() {
-		fmt.Println("mssong - 40")
 		defer wg.Done()
 		fsmount, err1 = rofs.Mount(node, fsdir)
 	}()
@@ -82,7 +80,6 @@ func doMount(node *core.IpfsNode, fsdir, nsdir string) error {
 	if node.IsOnline {
 		wg.Add(1)
 		go func() {
-			fmt.Println("mssong - 41")
 			defer wg.Done()
 			nsmount, err2 = ipns.Mount(node, nsdir, fsdir)
 		}()

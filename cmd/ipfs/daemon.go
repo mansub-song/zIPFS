@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	_ "expvar"
 	"fmt"
@@ -17,7 +16,6 @@ import (
 
 	multierror "github.com/hashicorp/go-multierror"
 
-	cid "github.com/ipfs/go-cid"
 	version "github.com/ipfs/go-ipfs"
 	config "github.com/ipfs/go-ipfs-config"
 	cserial "github.com/ipfs/go-ipfs-config/serialize"
@@ -33,7 +31,6 @@ import (
 	fsrepo "github.com/ipfs/go-ipfs/repo/fsrepo"
 	"github.com/ipfs/go-ipfs/repo/fsrepo/migrations"
 	"github.com/ipfs/go-ipfs/repo/fsrepo/migrations/ipfsfetcher"
-	"github.com/ipfs/go-merkledag"
 	sockets "github.com/libp2p/go-socket-activation"
 
 	cmds "github.com/ipfs/go-ipfs-cmds"
@@ -207,107 +204,9 @@ func defaultMux(path string) corehttp.ServeOption {
 	}
 }
 
-func initFileCidMap(path string) error {
-	b, err := ioutil.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	data := make([]cid.Cid, 0)
-	json.Unmarshal(b, &data) // JSON 문서의 내용을 변환하여 data에 저장
-
-	rootFileCid := data[0]
-	for i := 1; i < len(data); i++ {
-		// fmt.Println("loadInitCid:", data[i].String())
-		merkledag.FileCidMap[rootFileCid] = append(merkledag.FileCidMap[rootFileCid], data[i])
-	}
-	merkledag.FileCidMap[rootFileCid] = append(merkledag.FileCidMap[rootFileCid], rootFileCid)
-	return nil
-}
-
-//daemonCidMap.json 로드
-func loadDaemonCidMap(path string) error {
-	b, err := ioutil.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	data := make(map[string][]string)
-
-	json.Unmarshal(b, &data) //여기서 map안에 또 map으로 표현이 되어서 문제임..
-
-	// fmt.Printf("data:%+v\n", data)
-	for key, _ := range data {
-		rootCid, err := cid.Decode(key)
-		if err != nil {
-			log.Errorf("rootCid: %s\n", err.Error())
-		}
-		for _, v := range data[key] {
-			subCid, err := cid.Decode(v)
-			if err != nil {
-				log.Errorf("subCid: %s\n", err.Error())
-			}
-			merkledag.FileCidMap[rootCid] = append(merkledag.FileCidMap[rootCid], subCid)
-		}
-	}
-
-	// fmt.Printf("loadDaemonCidMap:%+v\n", merkledag.FileCidMap)
-	return nil
-}
-
-func loadCidMap() error {
-	homePath, _ := os.UserHomeDir()
-	initCid0Path := homePath + "/.ipfs/initCid0.json"
-	initCid1Path := homePath + "/.ipfs/initCid1.json"
-	daemonCidMapPath := homePath + "/.ipfs/daemonCidMap.json"
-	// if initCid0.json이 있는지없는지 보고, 있으면 load initCid0.json하고 삭제하기
-	// 없으면 daemonCidMap.json을 load후 삭제
-
-	//file load
-	if _, err := os.Stat(initCid0Path); err == nil {
-		// path/to/whatever exists
-		err := initFileCidMap(initCid0Path)
-		if err != nil {
-			return err
-		}
-		err = initFileCidMap(initCid1Path)
-		if err != nil {
-			return err
-		}
-		// fmt.Printf("initFileCidMap DONE:%+v\n", merkledag.FileCidMap)
-
-		//file delete
-		err = os.Remove(initCid0Path)
-		if err != nil {
-			panic(err)
-		}
-		err = os.Remove(initCid1Path)
-		if err != nil {
-			panic(err)
-		}
-
-	} else if errors.Is(err, os.ErrNotExist) {
-		//daemonCidMap.json을 load
-		fmt.Println("initCid0.json os.ErrNotExist")
-		loadDaemonCidMap(daemonCidMapPath)
-
-	} else {
-		fmt.Println("loadCidMap error!!")
-		return err
-	}
-
-	return nil
-
-}
 func daemonFunc(req *cmds.Request, re cmds.ResponseEmitter, env cmds.Environment) (_err error) {
-	// debug.PrintStack()
-	loadStart := time.Now()
-	err := loadCidMap()
-	if err != nil {
-		log.Errorf("loadInitCid: %s\n", err.Error())
-	}
-	loadElapsed := time.Since(loadStart)
-	fmt.Println("loadCidmap func time:", loadElapsed)
 	// Inject metrics before we do anything
-	err = mprome.Inject()
+	err := mprome.Inject()
 	if err != nil {
 		log.Errorf("Injecting prometheus handler for metrics failed with message: %s\n", err.Error())
 	}
@@ -637,20 +536,12 @@ func daemonFunc(req *cmds.Request, re cmds.ResponseEmitter, env cmds.Environment
 
 	// Give the user some immediate feedback when they hit C-c
 	go func() {
-		fmt.Println("mssong - 1")
-		// time.Sleep(2)
 		<-req.Context.Done()
 		notifyStopping()
 		fmt.Println("Received interrupt signal, shutting down...")
-		saveStart := time.Now()
-		err := saveCidMap()
-		if err != nil {
-			log.Errorf("failed to access config: %s", err)
-		}
-		saveElapsed := time.Since(saveStart)
-		fmt.Println("saveCidMapfunc time:", saveElapsed)
 		fmt.Println("(Hit ctrl-c again to force-shutdown the daemon.)")
 	}()
+
 	// Give the user heads up if daemon running in online mode has no peers after 1 minute
 	if !offline {
 		time.AfterFunc(1*time.Minute, func() {
@@ -693,14 +584,11 @@ func daemonFunc(req *cmds.Request, re cmds.ResponseEmitter, env cmds.Environment
 		}
 	}
 
-	time.Sleep(time.Second * 10) // for saveCidMap sleep time
-	fmt.Println("return errs!")
 	return errs
 }
 
 // serveHTTPApi collects options, creates listener, prints status message and starts serving requests
 func serveHTTPApi(req *cmds.Request, cctx *oldcmds.Context) (<-chan error, error) {
-	fmt.Println("@@@serveHTTPApi")
 	cfg, err := cctx.GetConfig()
 	if err != nil {
 		return nil, fmt.Errorf("serveHTTPApi: GetConfig() failed: %s", err)
@@ -793,21 +681,18 @@ func serveHTTPApi(req *cmds.Request, cctx *oldcmds.Context) (<-chan error, error
 	errc := make(chan error)
 	var wg sync.WaitGroup
 	for _, apiLis := range listeners {
-		// fmt.Println("!!")
 		wg.Add(1)
 		go func(lis manet.Listener) {
-			fmt.Println("mssong - 2")
 			defer wg.Done()
 			errc <- corehttp.Serve(node, manet.NetListener(lis), opts...)
 		}(apiLis)
 	}
 
 	go func() {
-		fmt.Println("mssong - 3")
 		wg.Wait()
 		close(errc)
 	}()
-	// fmt.Println("???")
+
 	return errc, nil
 }
 
@@ -844,7 +729,6 @@ func printSwarmAddrs(node *core.IpfsNode) {
 
 // serveHTTPGateway collects options, creates listener, prints status message and starts serving requests
 func serveHTTPGateway(req *cmds.Request, cctx *oldcmds.Context) (<-chan error, error) {
-	fmt.Println("@@@serveHTTPGateway")
 	cfg, err := cctx.GetConfig()
 	if err != nil {
 		return nil, fmt.Errorf("serveHTTPGateway: GetConfig() failed: %s", err)
@@ -928,14 +812,12 @@ func serveHTTPGateway(req *cmds.Request, cctx *oldcmds.Context) (<-chan error, e
 	for _, lis := range listeners {
 		wg.Add(1)
 		go func(lis manet.Listener) {
-			fmt.Println("mssong - 4")
 			defer wg.Done()
 			errc <- corehttp.Serve(node, manet.NetListener(lis), opts...)
 		}(lis)
 	}
 
 	go func() {
-		fmt.Println("mssong - 5")
 		wg.Wait()
 		close(errc)
 	}()
@@ -982,7 +864,6 @@ func maybeRunGC(req *cmds.Request, node *core.IpfsNode) (<-chan error, error) {
 
 	errc := make(chan error)
 	go func() {
-		fmt.Println("mssong - 6")
 		errc <- corerepo.PeriodicGC(req.Context, node)
 		close(errc)
 	}()
@@ -1013,7 +894,6 @@ func merge(cs ...<-chan error) <-chan error {
 	// Start a goroutine to close out once all the output goroutines are
 	// done.  This must start after the wg.Add call.
 	go func() {
-		fmt.Println("mssong - 7")
 		wg.Wait()
 		close(out)
 	}()
@@ -1048,43 +928,4 @@ func printVersion() {
 	fmt.Printf("Repo version: %d\n", fsrepo.RepoVersion)
 	fmt.Printf("System version: %s\n", runtime.GOARCH+"/"+runtime.GOOS)
 	fmt.Printf("Golang version: %s\n", runtime.Version())
-}
-
-func saveCidMap() error {
-	// fmt.Println("@@@saveCidMap")
-	homePath, _ := os.UserHomeDir()
-
-	path := homePath + "/.ipfs/daemonCidMap.json"
-	// fmt.Println(path)
-	// fmt.Println(cid, path)
-	err := writeCidMapFile(path)
-	if err != nil {
-		// fmt.Println("???")
-		return err
-	}
-	return nil
-}
-
-func writeCidMapFile(path string) error {
-	fmt.Println("@@@saveCidMap")
-	tmpCidMap := make(map[string][]string)
-
-	for k, _ := range merkledag.FileCidMap {
-		tmpCidMap[k.String()] = make([]string, 0)
-		for _, v := range merkledag.FileCidMap[k] {
-			tmpCidMap[k.String()] = append(tmpCidMap[k.String()], v.String())
-
-			// 	// fmt.Printf("tmpCidMap[k.String()]:%+v\n", tmpCidMap[k.String()])
-			// 	// fmt.Printf("merkledag.FileCidMap[k]:%+v\n", merkledag.FileCidMap[k])
-		}
-	}
-	doc, _ := json.Marshal(tmpCidMap)
-
-	err := ioutil.WriteFile(path, doc, os.FileMode(0644)) // articles.json 파일에 JSON 문서 저장
-	if err != nil {
-		return err
-	}
-	fmt.Println("Save CidMap")
-
-	return nil
 }

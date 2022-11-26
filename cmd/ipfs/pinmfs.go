@@ -65,7 +65,6 @@ func startPinMFS(configPollInterval time.Duration, cctx pinMFSContext, node pinM
 	errCh := make(chan error)
 	go pinMFSOnChange(configPollInterval, cctx, node, errCh)
 	go func() {
-		fmt.Println("mssong - 9")
 		for {
 			select {
 			case err, isOpen := <-errCh:
@@ -177,7 +176,6 @@ func pinAllMFS(ctx context.Context, node pinMFSNode, cfg *config.Config, rootCid
 
 		mfslog.Debugf("pinning MFS root %q to %q", rootCid, svcName)
 		go func() {
-			fmt.Println("mssong - 10")
 			if r, err := pinMFS(ctx, node, rootCid, svcName, svcConfig); err != nil {
 				select {
 				case errCh <- fmt.Errorf("pinning MFS root %q to %q (%v)", rootCid, svcName, err):

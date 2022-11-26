@@ -3,7 +3,6 @@ package coreapi
 import (
 	"context"
 	"fmt"
-	"time"
 
 	bserv "github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
@@ -19,7 +18,6 @@ type PinAPI CoreAPI
 
 func (api *PinAPI) Add(ctx context.Context, p path.Path, opts ...caopts.PinAddOption) error {
 	dagNode, err := api.core().ResolveNode(ctx, p)
-	fmt.Printf("dagNode:%#v\n", dagNode) //&merkledag.ProtoNode
 	if err != nil {
 		return fmt.Errorf("pin: %s", err)
 	}
@@ -30,24 +28,16 @@ func (api *PinAPI) Add(ctx context.Context, p path.Path, opts ...caopts.PinAddOp
 	}
 
 	defer api.blockstore.PinLock(ctx).Unlock(ctx)
-	//////////////////////////////////////////// 여기서 .ipfs/blocks에 데이터 들어감
-	st := time.Now()
+
 	err = api.pinning.Pin(ctx, dagNode, settings.Recursive)
 	if err != nil {
 		return fmt.Errorf("pin: %s", err)
 	}
-	elap := time.Since(st)
-	fmt.Println("pinning.Pin elap:", elap)
-	/////////////////////////////////////////////
 
-	// fmt.Printf("dagNode.Cid():%+v\n", dagNode.Cid())
-	// time.Sleep(5 * time.Second)
 	if err := api.provider.Provide(dagNode.Cid()); err != nil {
 		return err
 	}
-	/*
-		fmt.Printf("merkledag.FileCidMap:%+v\n", merkledag.FileCidMap)
-	*/
+
 	return api.pinning.Flush(ctx)
 }
 
@@ -201,7 +191,6 @@ func (api *PinAPI) Verify(ctx context.Context) (<-chan coreiface.PinStatus, erro
 
 	out := make(chan coreiface.PinStatus)
 	go func() {
-		fmt.Println("mssong - 29")
 		defer close(out)
 		for _, c := range recPins {
 			out <- checkPin(c)
@@ -234,7 +223,6 @@ func (p *pinInfo) Err() error {
 // The caller must keep reading results until the channel is closed to prevent
 // leaking the goroutine that is fetching pins.
 func (api *PinAPI) pinLsAll(ctx context.Context, typeStr string) <-chan coreiface.Pin {
-	// debug.PrintStack()
 	out := make(chan coreiface.Pin, 1)
 
 	keys := cid.NewSet()
@@ -262,7 +250,6 @@ func (api *PinAPI) pinLsAll(ctx context.Context, typeStr string) <-chan coreifac
 	}
 
 	go func() {
-		fmt.Println("mssong - 30")
 		defer close(out)
 
 		var dkeys, rkeys []cid.Cid

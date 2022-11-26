@@ -1,4 +1,3 @@
-//go:build !nofuse && !openbsd && !netbsd && !plan9
 // +build !nofuse,!openbsd,!netbsd,!plan9
 
 // package fuse/ipns implements a fuse filesystem that interfaces
@@ -351,7 +350,6 @@ func (fi *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wr
 func (fi *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	errs := make(chan error, 1)
 	go func() {
-		fmt.Println("mssong - 35")
 		errs <- fi.fi.Flush()
 	}()
 	select {
@@ -384,7 +382,6 @@ func (fi *FileNode) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 	// persisted until the root is updated.
 	errs := make(chan error, 1)
 	go func() {
-		fmt.Println("mssong - 36")
 		errs <- fi.fi.Flush()
 	}()
 	select {

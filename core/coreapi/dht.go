@@ -112,7 +112,6 @@ func provideKeysRec(ctx context.Context, r routing.Routing, bs blockstore.Blocks
 
 	errCh := make(chan error)
 	go func() {
-		fmt.Println("mssong - 27")
 		dserv := dag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
 		for _, c := range cids {
 			err := dag.Walk(ctx, dag.GetLinksDirect(dserv), c, provided.Visitor(ctx))

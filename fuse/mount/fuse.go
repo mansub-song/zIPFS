@@ -1,4 +1,3 @@
-//go:build !nofuse && !windows && !openbsd && !netbsd && !plan9
 // +build !nofuse,!windows,!openbsd,!netbsd,!plan9
 
 package mount
@@ -72,7 +71,6 @@ func (m *mount) mount() error {
 
 	errs := make(chan error, 1)
 	go func() {
-		fmt.Println("mssong - 37")
 		// fs.Serve blocks until the filesystem is unmounted.
 		err := fs.Serve(m.fuseConn, m.filesys)
 		log.Debugf("%s is unmounted", m.MountPoint())

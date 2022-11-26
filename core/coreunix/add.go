@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	gopath "path"
 	"strconv"
-	"time"
 
 	"github.com/ipfs/go-cid"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
@@ -18,7 +16,6 @@ import (
 	posinfo "github.com/ipfs/go-ipfs-posinfo"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
-	"github.com/ipfs/go-merkledag"
 	dag "github.com/ipfs/go-merkledag"
 	"github.com/ipfs/go-mfs"
 	"github.com/ipfs/go-unixfs"
@@ -30,8 +27,6 @@ import (
 )
 
 var log = logging.Logger("coreunix")
-
-var Read_elap int = 0
 
 // how many bytes of progress to wait before sending a progress update message
 const progressReaderIncrement = 1024 * 256
@@ -88,18 +83,10 @@ type Adder struct {
 
 func (adder *Adder) mfsRoot() (*mfs.Root, error) {
 	if adder.mroot != nil {
-		fmt.Println("mssong_here_1000")
 		return adder.mroot, nil
 	}
 	rnode := unixfs.EmptyDirNode()
 	rnode.SetCidBuilder(adder.CidBuilder)
-
-	if merkledag.IsMfsRootVisit == false {
-		merkledag.IsMfsRootVisit = true
-		merkledag.FileCidMap[rnode.Cid()] = append(merkledag.FileCidMap[rnode.Cid()], rnode.Cid())
-		merkledag.InitCidArr = append(merkledag.InitCidArr, rnode.Cid())
-		fmt.Println("mfsRoot rnode:", rnode.Cid().String())
-	}
 	mr, err := mfs.NewRoot(adder.ctx, adder.dagService, rnode, nil)
 	if err != nil {
 		return nil, err
@@ -115,12 +102,7 @@ func (adder *Adder) SetMfsRoot(r *mfs.Root) {
 
 // Constructs a node from reader's data, and adds it. Doesn't pin.
 func (adder *Adder) add(reader io.Reader) (ipld.Node, error) {
-	// debug.PrintStack()
-
 	chnk, err := chunker.FromString(reader, adder.Chunker)
-	// fmt.Printf("adder.Chunker:%v\n", adder.Chunker) //size-262144
-	// fmt.Printf("chnk:%v\n", chnk)
-
 	if err != nil {
 		return nil, err
 	}
@@ -132,32 +114,21 @@ func (adder *Adder) add(reader io.Reader) (ipld.Node, error) {
 		NoCopy:     adder.NoCopy,
 		CidBuilder: adder.CidBuilder,
 	}
-	db, err := params.New(chnk) // db = DagBuilderHelper
-	// fmt.Printf("db = %#v\n\n", db)
+
+	db, err := params.New(chnk)
 	if err != nil {
 		return nil, err
 	}
 	var nd ipld.Node
-	// fmt.Printf("adder.Trickle:%v\n", adder.Trickle) //false
-
 	if adder.Trickle {
 		nd, err = trickle.Layout(db)
 	} else {
-		start := time.Now()
 		nd, err = balanced.Layout(db)
-		elapse := time.Since(start)
-		fmt.Println("Layout elapse:", elapse)
-
 	}
 	if err != nil {
 		return nil, err
 	}
-	// FileCidLength := len(merkledag.FileCid)
-	// for i := 0; i < FileCidLength; i++ {
-	// 	fmt.Println("FileCid:", merkledag.FileCid[i])
-	// }
 
-	fmt.Println("adder.bufferedDS.Commit()")
 	return nd, adder.bufferedDS.Commit()
 }
 
@@ -188,7 +159,6 @@ func (adder *Adder) curRootNode() (ipld.Node, error) {
 // Recursively pins the root node of Adder and
 // writes the pin state to the backing datastore.
 func (adder *Adder) PinRoot(root ipld.Node) error {
-	// debug.PrintStack()
 	if !adder.Pin {
 		return nil
 	}
@@ -240,8 +210,8 @@ func (adder *Adder) outputDirs(path string, fsn mfs.FSNode) error {
 		if err != nil {
 			return err
 		}
-		err = outputDagnode(adder.Out, path, nd)
-		return err
+
+		return outputDagnode(adder.Out, path, nd)
 	default:
 		return fmt.Errorf("unrecognized fsn type: %#v", fsn)
 	}
@@ -249,15 +219,14 @@ func (adder *Adder) outputDirs(path string, fsn mfs.FSNode) error {
 
 func (adder *Adder) addNode(node ipld.Node, path string) error {
 	// patch it into the root
-	// fmt.Printf("path: %v\n", path) // ""
 	if path == "" {
 		path = node.Cid().String()
 	}
-	// fmt.Printf("path: %v\n", path) //path: QmcwUFZGxNvZMkCUbhhjx43vLJz79CbxyPRUP3roJ3bQMi
 
 	if pi, ok := node.(*posinfo.FilestoreNode); ok {
 		node = pi.Node
 	}
+
 	mr, err := adder.mfsRoot()
 	if err != nil {
 		return err
@@ -277,18 +246,16 @@ func (adder *Adder) addNode(node ipld.Node, path string) error {
 	if err := mfs.PutNode(mr, path, node); err != nil {
 		return err
 	}
-	fmt.Println("mssong_here_1")
+
 	if !adder.Silent {
-		err = outputDagnode(adder.Out, path, node)
-		return err
+		return outputDagnode(adder.Out, path, node)
 	}
-	fmt.Println("mssong_here_1_1")
 	return nil
 }
 
 // AddAllAndPin adds the given request's files and pin them.
 func (adder *Adder) AddAllAndPin(ctx context.Context, file files.Node) (ipld.Node, error) {
-	if adder.Pin { //true
+	if adder.Pin {
 		adder.unlocker = adder.gcLocker.PinLock(ctx)
 	}
 	defer func() {
@@ -298,17 +265,14 @@ func (adder *Adder) AddAllAndPin(ctx context.Context, file files.Node) (ipld.Nod
 	}()
 
 	if err := adder.addFileNode(ctx, "", file, true); err != nil {
-		fmt.Println("mssong_here_100")
 		return nil, err
 	}
-	fmt.Println("mssong_here_101")
 
 	// get root
 	mr, err := adder.mfsRoot()
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("mssong_here_102")
 	var root mfs.FSNode
 	rootdir := mr.GetDirectory()
 	root = rootdir
@@ -317,7 +281,6 @@ func (adder *Adder) AddAllAndPin(ctx context.Context, file files.Node) (ipld.Nod
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("mssong_here_103")
 
 	// if adding a file without wrapping, swap the root to it (when adding a
 	// directory, mfs root is the directory)
@@ -328,24 +291,18 @@ func (adder *Adder) AddAllAndPin(ctx context.Context, file files.Node) (ipld.Nod
 		if err != nil {
 			return nil, err
 		}
-		fmt.Println("mssong_here_104")
+
 		if len(children) == 0 {
 			return nil, fmt.Errorf("expected at least one child dir, got none")
 		}
-		fmt.Println("mssong_here_104_1")
+
 		// Replace root with the first child
 		name = children[0]
-		fmt.Println("name:", name) //name: QmQy6xmJhrcC5QLboAcGFcAE1tC8CrwDVkrHdEYJkLscrQ
-		// time.Sleep(3 * time.Second)
-		root, err = rootdir.Child(name) //here unmarshal 여기가 에러!!!
-
+		root, err = rootdir.Child(name)
 		if err != nil {
 			return nil, err
 		}
-		fmt.Println("mssong_here_105")
 	}
-
-	// nd, err := rootdir.Child_mansub(name)
 
 	err = mr.Close()
 	if err != nil {
@@ -356,17 +313,12 @@ func (adder *Adder) AddAllAndPin(ctx context.Context, file files.Node) (ipld.Nod
 	if err != nil {
 		return nil, err
 	}
-	// fmt.Printf("root:%#v\n", root) //root:&mfs.File
-	// fmt.Printf("nd:%#v\n", nd)     //nd:&merkledag.ProtoNode
-	// time.Sleep(3 * time.Second)
-	fmt.Println("mssong_here_106")
 
 	// output directory events
 	err = adder.outputDirs(name, root)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("mssong_here_107")
 
 	if asyncDagService, ok := adder.dagService.(syncer); ok {
 		err = asyncDagService.Sync()
@@ -375,11 +327,9 @@ func (adder *Adder) AddAllAndPin(ctx context.Context, file files.Node) (ipld.Nod
 		}
 	}
 
-	// if !adder.Pin {
-	// 	return nd, nil
-	// }
-
-	fmt.Println("Read_elap:", time.Duration(Read_elap))
+	if !adder.Pin {
+		return nd, nil
+	}
 	return nd, adder.PinRoot(nd)
 }
 
@@ -391,8 +341,7 @@ func (adder *Adder) addFileNode(ctx context.Context, path string, file files.Nod
 		return err
 	}
 
-	// fmt.Println("adder.livenodes", adder.liveNodes, liveCacheSize)
-	if adder.liveNodes >= liveCacheSize { // adder.liveNodes:0, liveCacheSize:262144
+	if adder.liveNodes >= liveCacheSize {
 		// TODO: A smarter cache that uses some sort of lru cache with an eviction handler
 		mr, err := adder.mfsRoot()
 		if err != nil {
@@ -435,44 +384,10 @@ func (adder *Adder) addSymlink(path string, l *files.Symlink) error {
 }
 
 func (adder *Adder) addFile(path string, file files.File) error {
-	// debug.PrintStack()
-	// fmt.Println("path:", path)
-	// fmt.Printf("file:%v\n", file)
 	// if the progress flag was specified, wrap the file so that we can send
 	// progress updates to the client (over the output channel)
 	var reader io.Reader = file
-
-	if fi, ok := file.(files.FileInfo); ok {
-		// fmt.Printf("fi: %#v\n", fi.AbsPath())
-		balanced.FileAbsPath = fi.AbsPath()
-		var err error
-		if fi.AbsPath() != "" {
-			chunker.OsFile, err = os.Open(fi.AbsPath())
-			if err != nil {
-				log.Fatal("os open fail!")
-			}
-		}
-
-	}
-
-	// fmt.Printf("file: %#v\n", file)
-	// fmt.Printf("path: %#v\n", path)
-	//////////////////////////
-	// abspath := file.AbsPath()
-	// if data, err := os.Stat(abspath); os.IsNotExist(err) {
-	// 	fmt.Println("Log.txt file is not")
-	// } else {
-
-	// 	fmt.Println(data.Name())
-	// 	fmt.Println(data.Size())
-	// 	fmt.Println(data.Mode())
-	// 	fmt.Println(data.ModTime())
-	// 	fmt.Println(data.IsDir())
-	// 	fmt.Println(data.Sys())
-	// }
-	////////////////////////////
-	// fmt.Println("adder.Progress:", adder.Progress)
-	if adder.Progress { //true
+	if adder.Progress {
 		rdr := &progressReader{file: reader, path: path, out: adder.Out}
 		if fi, ok := file.(files.FileInfo); ok {
 			reader = &progressReader2{rdr, fi}
@@ -480,11 +395,12 @@ func (adder *Adder) addFile(path string, file files.File) error {
 			reader = rdr
 		}
 	}
-	dagnode, err := adder.add(reader) //여기서 cid값 정하는 듯!
-	// fmt.Printf("dagnode:%v\n", dagnode)
+
+	dagnode, err := adder.add(reader)
 	if err != nil {
 		return err
 	}
+
 	// patch it into the root
 	return adder.addNode(dagnode, path)
 }
@@ -520,11 +436,7 @@ func (adder *Adder) addDir(ctx context.Context, path string, dir files.Directory
 }
 
 func (adder *Adder) maybePauseForGC(ctx context.Context) error {
-
-	// fmt.Printf("adder.unlocker:%v\n", adder.unlocker)
-	// fmt.Printf("adder.gcLocker.GCRequested(ctx):%v\n", adder.gcLocker.GCRequested(ctx)) //false
 	if adder.unlocker != nil && adder.gcLocker.GCRequested(ctx) {
-		// fmt.Println("here?")
 		rn, err := adder.curRootNode()
 		if err != nil {
 			return err
@@ -543,18 +455,14 @@ func (adder *Adder) maybePauseForGC(ctx context.Context) error {
 
 // outputDagnode sends dagnode info over the output channel
 func outputDagnode(out chan<- interface{}, name string, dn ipld.Node) error {
-	fmt.Println("mssong_here_22")
 	if out == nil {
 		return nil
 	}
 
 	o, err := getOutput(dn)
-	fmt.Println("mssong_here_2")
-
 	if err != nil {
 		return err
 	}
-	fmt.Println("mssong_here_3")
 
 	out <- &coreiface.AddEvent{
 		Path: o.Path,
@@ -567,11 +475,8 @@ func outputDagnode(out chan<- interface{}, name string, dn ipld.Node) error {
 
 // from core/commands/object.go
 func getOutput(dagnode ipld.Node) (*coreiface.AddEvent, error) {
-	fmt.Println("mssong_here_4")
 	c := dagnode.Cid()
-	fmt.Println("mssong_here_5")
 	s, err := dagnode.Size()
-	fmt.Println("mssong_here_6")
 	if err != nil {
 		return nil, err
 	}
@@ -593,22 +498,16 @@ type progressReader struct {
 }
 
 func (i *progressReader) Read(p []byte) (int, error) {
-	st := time.Now()
 	n, err := i.file.Read(p)
-	// n := len(p)
-	// var err error = nil
 
 	i.bytes += int64(n)
 	if i.bytes-i.lastProgress >= progressReaderIncrement || err == io.EOF {
 		i.lastProgress = i.bytes
-		// i.out <- &coreiface.AddEvent{ // mssong - 여기가 event생성 되는 곳!!
-		// 	Name:  i.path,
-		// 	Bytes: i.bytes,
-		// }
+		i.out <- &coreiface.AddEvent{
+			Name:  i.path,
+			Bytes: i.bytes,
+		}
 	}
-	elap := time.Since(st)
-	Read_elap = Read_elap + int(elap)
-	// fmt.Println("read elap:", elap)
 
 	return n, err
 }

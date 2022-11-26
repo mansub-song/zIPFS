@@ -80,7 +80,6 @@ However, it could reveal:
 
 		r, w := io.Pipe()
 		go func() {
-			fmt.Println("mssong - 17")
 			_ = w.CloseWithError(writeProfiles(req.Context, cpuProfileTime, w))
 		}()
 		return res.Emit(r)

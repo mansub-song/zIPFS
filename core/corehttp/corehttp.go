@@ -34,7 +34,6 @@ type ServeOption func(*core.IpfsNode, net.Listener, *http.ServeMux) (*http.Serve
 // makeHandler turns a list of ServeOptions into a http.Handler that implements
 // all of the given options, in order.
 func makeHandler(n *core.IpfsNode, l net.Listener, options ...ServeOption) (http.Handler, error) {
-	// debug.PrintStack()
 	topMux := http.NewServeMux()
 	mux := topMux
 	for _, option := range options {
@@ -64,7 +63,6 @@ func makeHandler(n *core.IpfsNode, l net.Listener, options ...ServeOption) (http
 // unambiguously map to a valid multiaddr. e.g. for convenience, ":8080" should
 // map to "/ip4/0.0.0.0/tcp/8080".
 func ListenAndServe(n *core.IpfsNode, listeningMultiAddr string, options ...ServeOption) error {
-	fmt.Println("@@@ListenAndServe")
 	addr, err := ma.NewMultiaddr(listeningMultiAddr)
 	if err != nil {
 		return err
