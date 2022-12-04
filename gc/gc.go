@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	bserv "github.com/ipfs/go-blockservice"
 	cid "github.com/ipfs/go-cid"
@@ -38,6 +40,79 @@ func toRawCids(set *cid.Set) (*cid.Set, error) {
 	return newSet, err
 }
 
+// func OptColoredSet() *cid.Set {
+// 	gcs := cid.NewSet()
+
+// 	// fmt.Printf("OptColoredSet Map:%+v\n", dag.FileCidMap)
+// 	// fmt.Printf("dag.FileCidMap:%+v\n", dag.FileCidMap)
+// 	for _, val := range dag.FileCidMap {
+// 		for _, cid := range val {
+// 			// fmt.Printf("OptColoredSet_cid:%v\n", cid)
+// 			// fmt.Printf("OptColoredSet_cidV1:%v\n", toCidV1(cid))
+// 			gcs.Visit(toCidV1(cid))
+// 		}
+// 	}
+
+// 	for _, val := range dag.UnpinnedCidMap {
+// 		for _, cid := range val {
+// 			gcs.Visit(toCidV1(cid))
+// 		}
+// 	}
+// 	return gcs
+// }
+
+func removeSet(gcs *cid.Set, keys []cid.Cid, ctx context.Context, bs bstore.GCBlockstore, output chan Result) {
+	// removeKeys := make([]cid.Cid, 0)
+	if len(keys) > 0 {
+		for _, key := range keys {
+			if !gcs.Has(key) {
+				err := bs.DeleteBlock(ctx, key)
+				if err != nil {
+					select {
+					case output <- Result{Error: &CannotDeleteBlockError{key, err}}:
+					case <-ctx.Done():
+						println("break loop_1")
+						return
+					}
+					// continue as error is non-fatal
+					println("continue loop@@@")
+					continue
+				}
+				select {
+				case output <- Result{KeyRemoved: key}:
+				case <-ctx.Done():
+					println("break loop_2")
+					break
+				}
+			}
+		}
+	}
+	// return removeKeys
+
+}
+func parallelRemoveSet(gcs *cid.Set, allkeys []cid.Cid, numTh int, ctx context.Context, bs bstore.GCBlockstore, output chan Result) {
+	// removeKeys := make([]cid.Cid, numTh)
+	if len(allkeys) < numTh {
+		removeSet(gcs, allkeys, ctx, bs, output)
+	} else {
+		size := len(allkeys) / numTh
+		var wg sync.WaitGroup
+
+		for i := 0; i < numTh; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				begin, end := i*size, (i+1)*size
+				if end > len(allkeys) {
+					end = len(allkeys)
+				}
+				removeSet(gcs, allkeys[begin:end], ctx, bs, output)
+			}(i)
+		}
+		wg.Wait()
+	}
+}
+
 // GC performs a mark and sweep garbage collection of the blocks in the blockstore
 // first, it creates a 'marked' set and adds to it the following:
 // - all recursively pinned blocks, plus all of their descendants (recursively)
@@ -58,86 +133,144 @@ func GC(ctx context.Context, bs bstore.GCBlockstore, dstor dstore.Datastore, pn 
 	output := make(chan Result, 128)
 
 	go func() {
+		var err error
 		defer cancel()
 		defer close(output)
 		defer unlocker.Unlock(ctx)
 
-		gcs, err := ColoredSet(ctx, pn, ds, bestEffortRoots, output)
-		if err != nil {
-			select {
-			case output <- Result{Error: err}:
-			case <-ctx.Done():
-			}
-			return
-		}
-
-		// The blockstore reports raw blocks. We need to remove the codecs from the CIDs.
-		gcs, err = toRawCids(gcs)
-		if err != nil {
-			select {
-			case output <- Result{Error: err}:
-			case <-ctx.Done():
-			}
-			return
-		}
-
-		keychan, err := bs.AllKeysChan(ctx)
-		if err != nil {
-			select {
-			case output <- Result{Error: err}:
-			case <-ctx.Done():
-			}
-			return
-		}
-
-		errors := false
-		var removed uint64
-
-	loop:
-		for ctx.Err() == nil { // select may not notice that we're "done".
-			select {
-			case k, ok := <-keychan:
-				if !ok {
-					break loop
+		gcOptFlag := false
+		if gcOptFlag {
+			startTime := time.Now()
+			// gcsOpt := OptColoredSet() //optimization
+			gcsOpt, err := ColoredSet(ctx, pn, ds, bestEffortRoots, output) // traditional
+			if err != nil {
+				select {
+				case output <- Result{Error: err}:
+				case <-ctx.Done():
 				}
-				// NOTE: assumes that all CIDs returned by the keychan are _raw_ CIDv1 CIDs.
-				// This means we keep the block as long as we want it somewhere (CIDv1, CIDv0, Raw, other...).
-				if !gcs.Has(k) {
-					err := bs.DeleteBlock(ctx, k)
-					removed++
-					if err != nil {
-						errors = true
+				return
+			}
+			gcsOpt, err = toRawCids(gcsOpt)
+
+			if err != nil {
+				select {
+				case output <- Result{Error: err}:
+				case <-ctx.Done():
+				}
+				return
+			}
+			elapsedTime := time.Since(startTime)
+			fmt.Printf("######OptColoredSet time: %vms\n\n", elapsedTime.Milliseconds())
+			// fmt.Fprintf(f, "OptColoredSet time: %v\n", elapsedTime.Milliseconds())
+			fmt.Printf("gcsOpt:%+v\n\n", gcsOpt.Len())
+
+			// bigInt := new(big.Int)
+			// bigInt.SetInt64(elapsedTime.Milliseconds())
+			// bigInt.Bytes()
+
+			// f.WriteString("text to append\n")
+			// if _, err := f.Write([]byte("\nOptColoredSet time: ")); err != nil {
+			// 	log.Fatal(err)
+			// }
+			// if _, err := f.Write(bigInt.Bytes()); err != nil {
+			// 	log.Fatal(err)
+			// }
+
+			startTime = time.Now()
+			numThread := 32
+			startTimAllKeys := time.Now()
+			allKeys, err := bs.AllKeysMansub(ctx)
+			elapsedAllKeys := time.Since(startTimAllKeys)
+			fmt.Printf("ONLY AllKeysMansub time: %vms\n", elapsedAllKeys.Milliseconds())
+			if err != nil {
+				select {
+				case output <- Result{Error: err}:
+				case <-ctx.Done():
+
+				}
+				return
+			}
+			parallelRemoveSet(gcsOpt, allKeys, numThread, ctx, bs, output)
+			elapsedTime = time.Since(startTime)
+			fmt.Printf("######Delete Block time(numThread = %d): %vms\n", numThread, elapsedTime.Milliseconds())
+			// fmt.Fprintf(f, "Delete Block time(numThread = %d): %v\n", numThread, elapsedTime.Milliseconds())
+		} else {
+			gcs, err := ColoredSet(ctx, pn, ds, bestEffortRoots, output)
+			if err != nil {
+				select {
+				case output <- Result{Error: err}:
+				case <-ctx.Done():
+				}
+				return
+			}
+
+			// The blockstore reports raw blocks. We need to remove the codecs from the CIDs.
+			gcs, err = toRawCids(gcs)
+			if err != nil {
+				select {
+				case output <- Result{Error: err}:
+				case <-ctx.Done():
+				}
+				return
+			}
+
+			keychan, err := bs.AllKeysChan(ctx)
+			if err != nil {
+				select {
+				case output <- Result{Error: err}:
+				case <-ctx.Done():
+				}
+				return
+			}
+
+			errors := false
+			var removed uint64
+
+		loop:
+			for ctx.Err() == nil { // select may not notice that we're "done".
+				select {
+				case k, ok := <-keychan:
+					if !ok {
+						break loop
+					}
+					// NOTE: assumes that all CIDs returned by the keychan are _raw_ CIDv1 CIDs.
+					// This means we keep the block as long as we want it somewhere (CIDv1, CIDv0, Raw, other...).
+					if !gcs.Has(k) {
+						err := bs.DeleteBlock(ctx, k)
+						removed++
+						if err != nil {
+							errors = true
+							select {
+							case output <- Result{Error: &CannotDeleteBlockError{k, err}}:
+							case <-ctx.Done():
+								break loop
+							}
+							// continue as error is non-fatal
+							continue loop
+						}
 						select {
-						case output <- Result{Error: &CannotDeleteBlockError{k, err}}:
+						case output <- Result{KeyRemoved: k}:
 						case <-ctx.Done():
 							break loop
 						}
-						// continue as error is non-fatal
-						continue loop
 					}
-					select {
-					case output <- Result{KeyRemoved: k}:
-					case <-ctx.Done():
-						break loop
-					}
+				case <-ctx.Done():
+					break loop
 				}
-			case <-ctx.Done():
-				break loop
 			}
-		}
-		if errors {
-			select {
-			case output <- Result{Error: ErrCannotDeleteSomeBlocks}:
-			case <-ctx.Done():
-				return
+			if errors {
+				select {
+				case output <- Result{Error: ErrCannotDeleteSomeBlocks}:
+				case <-ctx.Done():
+					return
+				}
 			}
-		}
 
+		}
 		gds, ok := dstor.(dstore.GCDatastore)
 		if !ok {
 			return
 		}
-
 		err = gds.CollectGarbage(ctx)
 		if err != nil {
 			select {

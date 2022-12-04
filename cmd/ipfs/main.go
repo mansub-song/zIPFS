@@ -10,8 +10,12 @@ import (
 	"net/http"
 	"os"
 	"runtime/pprof"
+	"sync"
 	"time"
 
+	merkledag "github.com/ipfs/go-merkledag"
+
+	cid "github.com/ipfs/go-cid"
 	util "github.com/ipfs/go-ipfs/cmd/ipfs/util"
 	oldcmds "github.com/ipfs/go-ipfs/commands"
 	core "github.com/ipfs/go-ipfs/core"
@@ -68,6 +72,13 @@ func loadPlugins(repoPath string) (*loader.PluginLoader, error) {
 // - output the response
 // - if anything fails, print error, maybe with help
 func main() {
+	if merkledag.PinBuffer == nil && merkledag.UnPinBuffer == nil {
+		merkledag.PinBuffer = make(map[cid.Cid]*merkledag.TierCid)
+		merkledag.UnPinBuffer = make(map[cid.Cid]*merkledag.TierCid)
+		merkledag.PinBufferMutex = &sync.Mutex{}
+		merkledag.UnPinBufferMutex = &sync.Mutex{}
+
+	}
 	os.Exit(mainRet())
 }
 
