@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +15,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	dstore "github.com/ipfs/go-datastore"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
+	dshelp "github.com/ipfs/go-ipfs-ds-help"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	pin "github.com/ipfs/go-ipfs-pinner"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -22,6 +25,10 @@ import (
 )
 
 var log = logging.Logger("gc")
+var HasTime = 0
+
+// var numThread = 32
+// var IPFS_Path = "/home/mssong/.ipfs"
 
 // Result represents an incremental output from a garbage collection
 // run.  It contains either an error, or the cid of a removed object.
@@ -40,33 +47,62 @@ func toRawCids(set *cid.Set) (*cid.Set, error) {
 	return newSet, err
 }
 
-// func OptColoredSet() *cid.Set {
-// 	gcs := cid.NewSet()
+func OptColoredSet() *cid.Set {
+	gcs := cid.NewSet()
 
-// 	// fmt.Printf("OptColoredSet Map:%+v\n", dag.FileCidMap)
-// 	// fmt.Printf("dag.FileCidMap:%+v\n", dag.FileCidMap)
-// 	for _, val := range dag.FileCidMap {
-// 		for _, cid := range val {
-// 			// fmt.Printf("OptColoredSet_cid:%v\n", cid)
-// 			// fmt.Printf("OptColoredSet_cidV1:%v\n", toCidV1(cid))
-// 			gcs.Visit(toCidV1(cid))
-// 		}
-// 	}
+	// fmt.Printf("OptColoredSet Map:%+v\n", dag.FileCidMap)
+	// fmt.Printf("dag.FileCidMap:%+v\n", dag.FileCidMap)
+	for _, tieredCID := range dag.PinBuffer {
+		for _, cid := range tieredCID.NonLeaf {
+			// fmt.Printf("OptColoredSet_cid:%v\n", cid)
+			// fmt.Printf("OptColoredSet_cidV1:%v\n", toCidV1(cid))
+			gcs.Visit(toCidV1(cid))
+		}
+		for _, cid := range tieredCID.Leaf {
+			// fmt.Printf("OptColoredSet_cid:%v\n", cid)
+			// fmt.Printf("OptColoredSet_cidV1:%v\n", toCidV1(cid))
+			gcs.Visit(toCidV1(cid))
+		}
+	}
 
-// 	for _, val := range dag.UnpinnedCidMap {
-// 		for _, cid := range val {
-// 			gcs.Visit(toCidV1(cid))
-// 		}
-// 	}
-// 	return gcs
-// }
+	// for _, val := range dag.UnpinnedCidMap {
+	// 	for _, cid := range val {
+	// 		gcs.Visit(toCidV1(cid))
+	// 	}
+	// }
+	fmt.Println("gcs.Len():", gcs.Len())
+	return gcs
+}
+
+func encode(key dstore.Key) (dirPath, filePath string) {
+	// dir: /home/mssong/.ipfs/blocks/7P path: /home/mssong/.ipfs/blocks/7P/CIQKGXY65BAIM2G5C64GRJOK2SGPDAXNG5VGHVHW7KFQ3PFFF5YH7PI.data
+	extension := ".data"
+	noslash := key.String()[1:]
+	// datastorePath := "/home/mssong/.ipfs/blocks"
+	datastorePath := dag.IPFS_Path + "/blocks"
+
+	dirPath = filepath.Join(datastorePath, noslash[len(noslash)-3:len(noslash)-1])
+	filePath = filepath.Join(dirPath, noslash+extension)
+	return dirPath, filePath
+}
 
 func removeSet(gcs *cid.Set, keys []cid.Cid, ctx context.Context, bs bstore.GCBlockstore, output chan Result) {
 	// removeKeys := make([]cid.Cid, 0)
+	fmt.Println("keys length:", len(keys))
 	if len(keys) > 0 {
 		for _, key := range keys {
-			if !gcs.Has(key) {
-				err := bs.DeleteBlock(ctx, key)
+			st := time.Now()
+			has := gcs.Has(key)
+			elap := time.Since(st)
+			HasTime = HasTime + int(elap)
+			if !has {
+				/////
+				// err := bs.DeleteBlock(ctx, key)
+				////
+				dsKey := dshelp.MultihashToDsKey(key.Hash())
+				_, filePath := encode(dsKey)
+				// fmt.Println("filePath:", filePath)
+				err := os.Remove(filePath)
 				if err != nil {
 					select {
 					case output <- Result{Error: &CannotDeleteBlockError{key, err}}:
@@ -123,6 +159,8 @@ func parallelRemoveSet(gcs *cid.Set, allkeys []cid.Cid, numTh int, ctx context.C
 // The routine then iterates over every block in the blockstore and
 // deletes any block that is not found in the marked set.
 func GC(ctx context.Context, bs bstore.GCBlockstore, dstor dstore.Datastore, pn pin.Pinner, bestEffortRoots []cid.Cid) <-chan Result {
+	fmt.Println("@@GC start")
+	HasTime = 0
 	ctx, cancel := context.WithCancel(ctx)
 
 	unlocker := bs.GCLock(ctx)
@@ -138,11 +176,11 @@ func GC(ctx context.Context, bs bstore.GCBlockstore, dstor dstore.Datastore, pn 
 		defer close(output)
 		defer unlocker.Unlock(ctx)
 
-		gcOptFlag := false
+		gcOptFlag := true
 		if gcOptFlag {
 			startTime := time.Now()
-			// gcsOpt := OptColoredSet() //optimization
-			gcsOpt, err := ColoredSet(ctx, pn, ds, bestEffortRoots, output) // traditional
+			gcsOpt := OptColoredSet() //optimization
+			// gcsOpt, err := ColoredSet(ctx, pn, ds, bestEffortRoots, output) // traditional
 			if err != nil {
 				select {
 				case output <- Result{Error: err}:
@@ -176,8 +214,8 @@ func GC(ctx context.Context, bs bstore.GCBlockstore, dstor dstore.Datastore, pn 
 			// 	log.Fatal(err)
 			// }
 
+			// Here !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 			startTime = time.Now()
-			numThread := 32
 			startTimAllKeys := time.Now()
 			allKeys, err := bs.AllKeysMansub(ctx)
 			elapsedAllKeys := time.Since(startTimAllKeys)
@@ -190,10 +228,17 @@ func GC(ctx context.Context, bs bstore.GCBlockstore, dstor dstore.Datastore, pn 
 				}
 				return
 			}
-			parallelRemoveSet(gcsOpt, allKeys, numThread, ctx, bs, output)
+			// st := time.Now()
+			// removeSet(gcsOpt, allKeys, ctx, bs, output)
+			// elap := time.Since(st)
+			// fmt.Println("HasTime:", time.Duration(HasTime))
+			// fmt.Println("removeSet time:", elap)
+
+			parallelRemoveSet(gcsOpt, allKeys, dag.NumThread, ctx, bs, output)
 			elapsedTime = time.Since(startTime)
-			fmt.Printf("######Delete Block time(numThread = %d): %vms\n", numThread, elapsedTime.Milliseconds())
+			fmt.Printf("######Delete Block time(dag.NumThread = %d): %vms\n", dag.NumThread, elapsedTime.Milliseconds())
 			// fmt.Fprintf(f, "Delete Block time(numThread = %d): %v\n", numThread, elapsedTime.Milliseconds())
+
 		} else {
 			gcs, err := ColoredSet(ctx, pn, ds, bestEffortRoots, output)
 			if err != nil {
