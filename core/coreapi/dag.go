@@ -2,6 +2,7 @@ package coreapi
 
 import (
 	"context"
+	"fmt"
 
 	cid "github.com/ipfs/go-cid"
 	pin "github.com/ipfs/go-ipfs-pinner"
@@ -29,10 +30,42 @@ func (adder *pinningAdder) Add(ctx context.Context, nd ipld.Node) error {
 	return adder.pinning.Flush(ctx)
 }
 
+func (adder *pinningAdder) Add_mansub(ctx context.Context, nd ipld.Node) error {
+	fmt.Println("here??")
+	defer adder.blockstore.PinLock(ctx).Unlock(ctx)
+
+	if err := adder.dag.Add(ctx, nd); err != nil {
+		return err
+	}
+
+	adder.pinning.PinWithMode(nd.Cid(), pin.Recursive)
+
+	return adder.pinning.Flush(ctx)
+}
+
 func (adder *pinningAdder) AddMany(ctx context.Context, nds []ipld.Node) error {
 	defer adder.blockstore.PinLock(ctx).Unlock(ctx)
 
 	if err := adder.dag.AddMany(ctx, nds); err != nil {
+		return err
+	}
+
+	cids := cid.NewSet()
+
+	for _, nd := range nds {
+		c := nd.Cid()
+		if cids.Visit(c) {
+			adder.pinning.PinWithMode(c, pin.Recursive)
+		}
+	}
+
+	return adder.pinning.Flush(ctx)
+}
+
+func (adder *pinningAdder) AddMany_mansub(ctx context.Context, nds []ipld.Node) error {
+	defer adder.blockstore.PinLock(ctx).Unlock(ctx)
+
+	if err := adder.dag.AddMany_mansub(ctx, nds); err != nil {
 		return err
 	}
 

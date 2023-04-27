@@ -8,6 +8,8 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+
+	// "net/http/pprof"
 	"os"
 	"runtime/pprof"
 	"sync"
@@ -79,6 +81,7 @@ func main() {
 		merkledag.UnPinBufferMutex = &sync.Mutex{}
 
 	}
+
 	os.Exit(mainRet())
 }
 

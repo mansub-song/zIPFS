@@ -10,6 +10,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -205,6 +206,11 @@ func defaultMux(path string) corehttp.ServeOption {
 }
 
 func daemonFunc(req *cmds.Request, re cmds.ResponseEmitter, env cmds.Environment) (_err error) {
+	// go func() {
+	// 	log.Info(http.ListenAndServe("localhost:6060", nil))
+	// }()
+	debug.SetMaxThreads(40000)
+	// debug.SetGCPercent(50)
 	// Inject metrics before we do anything
 	err := mprome.Inject()
 	if err != nil {

@@ -424,7 +424,7 @@ func (adder *Adder) addFile(path string, file files.File) error {
 	if err != nil {
 		return err
 	}
-
+	// runtime.GC()
 	// patch it into the root
 	return adder.addNode(dagnode, path)
 }
